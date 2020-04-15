@@ -1,0 +1,115 @@
+version: "3"
+
+services:
+  elasticsearch:
+    restart: always
+    image: docker.elastic.co/elasticsearch/elasticsearch:6.2.4
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - ES_JAVA_OPTS=-Xms2048m -Xmx2048m
+      - discovery.type=single-node
+    healthcheck:
+      test: "wget -q -O - http://localhost:9200/_cat/health"
+      interval: 1s
+      timeout: 30s
+      retries: 300
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - ./elasticsearch/data:/usr/share/elasticsearch/data
+    networks:
+      - monstache-network
+
+  kibana:
+    restart: always
+    image: docker.elastic.co/kibana/kibana:6.2.4
+    expose:
+      - 5601
+    ports:
+      - 5601:5601
+    depends_on:
+      - elasticsearch
+    environment:
+      - SERVER_PORT=5601
+      - SERVER_NAME=kibana.example.org
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      - monstache-network
+
+  monstache:
+    restart: always
+    image: rwynn/monstache:rel5
+    command: -f ./monstache.config.toml &
+    volumes:
+      - ./config/monstache.config.toml:/monstache.config.toml
+    depends_on:
+      - elasticsearch
+      - mongo1
+      - mongo2
+      - mongo3
+    links:
+      - elasticsearch
+    ports:
+      - "8080:8080"
+    networks:
+      - monstache-network
+
+   mongo1:
+    restart: always
+    image: mongo:latest
+    container_name: mongo1
+    expose:
+      - "27017"
+    ports:
+      - "27018:27017"
+    volumes:
+      - ./mongodb/db1:/data/db
+    command: mongod --replSet rp0
+    networks:
+      - monstache-network
+
+  mongo2:
+    restart: always
+    image: mongo:latest
+    container_name: mongo2
+    expose:
+      - "27017"
+    ports:
+      - "27019:27017"
+    volumes:
+      - ./mongodb/db2:/data/db
+    command: mongod --replSet rp0
+    depends_on:
+      - mongo1
+    networks:
+      - monstache-network
+
+  mongo3:
+    restart: always
+    image: mongo:latest
+    container_name: mongo3
+    expose:
+      - "27017"
+    ports:
+      - "27020:27017"
+    volumes:
+      - ./mongodb/db3:/data/db
+    command: mongod --replSet rp0
+    depends_on:
+      - mongo1
+    networks:
+      - monstache-network
+
+  mongosetup:
+    image: "setup-rspl:latest"
+    depends_on:
+      - mongo1
+    networks:
+      - monstache-network
+
+networks:
+  monstache-network:
